@@ -5,6 +5,9 @@ import { minitz } from "./helpers/minitz.js";
 import { CronOptions as CronOptions } from "./options.js"; // eslint-disable-line no-unused-vars
 import { LAST_OCCURRENCE, ANY_OCCURRENCE, OCCURRENCE_BITMASKS } from "./pattern.js";
 
+// Check if Temporal is defined
+const TEMPORAL_IS_SUPPORTED = typeof Temporal !== 'undefined';
+
 /** 
  * Constant defining the minimum number of days per month where index 0 = January etc.
  * 
@@ -68,6 +71,8 @@ function CronDate (d, tz) {
 		this.fromString(d);
 	} else if (d instanceof CronDate) {
 		this.fromCronDate(d);
+	} else if (TEMPORAL_IS_SUPPORTED && (d instanceof Temporal.PlainDate || d instanceof Temporal.ZonedDateTime)) {
+		this.fromTemporal(d);
 	} else {
 		throw new TypeError("CronDate: Invalid type (" + typeof d + ") passed to CronDate constructor");
 	}
@@ -160,6 +165,45 @@ CronDate.prototype.fromDate = function (inDate) {
 		this.year = inDate.getFullYear();
 	}
 
+};
+
+/**
+ * Sets internals using a Temporal object. Supports Temporal.PlainDate and Temporal.ZonedDateTime.
+ * Converts Temporal.ZonedDateTime to the target time zone before extracting date information.
+ * Assumes usage of the ISO calendar.
+ * 
+ * @param {Temporal.PlainDate | Temporal.ZonedDateTime} temporalDate - Input Temporal date.
+ * @param {string} [tz] - Target time zone as an IANA time zone string (e.g., "Europe/Paris").
+ */
+CronDate.prototype.fromTemporal = function (temporalDate, tz) {
+    // If the input is a Temporal.PlainDate, convert it to a Temporal.ZonedDateTime using the provided time zone
+    if (temporalDate instanceof Temporal.PlainDate && tz) {
+        temporalDate = temporalDate.toZonedDateTime({ timeZone: tz, plainTime: Temporal.PlainTime.from({ hour: 0, minute: 0, second: 0 }) });
+    }
+
+    // If the input is a Temporal.ZonedDateTime, optionally adjust to the target time zone
+    if (temporalDate instanceof Temporal.ZonedDateTime && tz) {
+        temporalDate = temporalDate.withTimeZone(tz);
+    }
+
+    // Extract and set date components
+    this.year = temporalDate.year;
+    this.month = temporalDate.month - 1; // Adjust because Temporal months are 1-indexed
+    this.day = temporalDate.day;
+
+    // Set time components
+    if (temporalDate instanceof Temporal.ZonedDateTime) {
+        this.hour = temporalDate.hour;
+        this.minute = temporalDate.minute;
+        this.second = temporalDate.second;
+        this.ms = temporalDate.millisecond;
+    } else {
+        // For PlainDate, set time components to zero
+        this.hour = 0;
+        this.minute = 0;
+        this.second = 0;
+        this.ms = 0;
+    }
 };
 
 /**
